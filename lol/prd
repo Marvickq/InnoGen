@@ -1,0 +1,36 @@
+# Product Requirements Document (PRD): InnoGen Research
+
+## 1. Product Truth & Purpose
+- **Product Name**: InnoGen Research
+- **Tagline**: Autonomous Multi-Agent Research & Fact-Verification Platform
+- **Problem Statement**: Large language models produce plausible answers containing unsupported claims, outdated facts, hallucinations, weak citations, and conflicting information.
+- **Solution**: InnoGen deploys a 10-stage autonomous multi-agent state graph pipeline that decomposes complex queries, executes parallel web research, collects traceable evidence, verifies claims and citations, detects contradictions, checks for hallucinations, scores confidence, and generates evidence-backed reports.
+
+---
+
+## 2. Core 10-Agent Graph Workflow
+1. **Research Planner**: Formulates core research objectives from user query.
+2. **Task Decomposer**: Breaks objectives into independent parallel research tasks.
+3. **Parallel Research Agents**: Fetches web search results and academic data using real search APIs.
+4. **Evidence Collection**: Extracts structured evidence items maintaining source provenance.
+5. **Claim Extraction**: Extracts testable factual claims from collected evidence.
+6. **Citation Verification**: Validates URL accessibility, domain trust, and text support.
+7. **Fact Verification**: Cross-compares claims against evidence (VERIFIED, PARTIALLY VERIFIED, CONTRADICTED, UNSUPPORTED).
+8. **Contradiction Detection**: Flags conflicting evidence across sources and explains discrepancies.
+9. **Hallucination & Support Check**: Ensures every report sentence maps directly to primary evidence.
+10. **Consensus & Confidence Scoring**: Calculates explainable 0–100% confidence scores based on source authority, agreement, and citation integrity.
+
+---
+
+## 3. Key Features & Deliverables
+- **Research Workspace UI**: Query console with depth settings (Quick vs. Deep Academic), live LangGraph node visualizer, evidence matrix, contradiction viewer, and verified markdown report.
+- **Traceable Provenance**: Every claim links directly to its source URL, publisher, and raw evidence snippet.
+- **Real-Time WebSocket Stream**: Live node execution and state transitions streamed to frontend clients.
+- **Database Persistence**: Persistent database tracking ResearchJobs, Tasks, Evidence, Claims, Citations, Contradictions, and Reports.
+
+---
+
+## 4. Success Metrics
+- **Fact Verification Precision**: > 95% accuracy on verified vs. contradicted claims.
+- **Hallucination Rate**: 0% unsourced factual assertions in generated reports.
+- **End-to-End Execution**: Complete multi-agent research graph execution in < 10 seconds.

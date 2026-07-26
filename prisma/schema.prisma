@@ -1,0 +1,136 @@
+// Prisma Schema for InnoGen Autonomous Multi-Agent Research Engine v6
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String        @id @default(uuid())
+  email     String        @unique
+  name      String
+  role      String        @default("Researcher")
+  createdAt DateTime      @default(now())
+  jobs      ResearchJob[]
+}
+
+model ResearchJob {
+  id                 String             @id @default(uuid())
+  userId             String?
+  query              String
+  depth              String             @default("standard")
+  academicOnly       Boolean            @default(false)
+  status             String             @default("PENDING")
+  overallConfidence  Float              @default(0.0)
+  hallucinationScore Float              @default(0.0)
+  createdAt          DateTime           @default(now())
+  completedAt        DateTime?
+  user               User?              @relation(fields: [userId], references: [id])
+  tasks              ResearchTask[]
+  evidenceItems      EvidenceItem[]
+  claims             Claim[]
+  contradictions     Contradiction[]
+  citations          Citation[]
+  report             VerificationReport?
+}
+
+model ResearchTask {
+  id             String         @id @default(uuid())
+  jobId          String
+  objective      String
+  status         String         @default("PENDING")
+  createdAt      DateTime       @default(now())
+  job            ResearchJob    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  evidenceItems  EvidenceItem[]
+}
+
+model EvidenceItem {
+  id                    String        @id @default(uuid())
+  jobId                 String
+  taskId                String?
+  sourceUrl             String
+  sourceTitle           String
+  publisher             String
+  snippet               String
+  domainAuthorityScore  Float         @default(0.85)
+  createdAt             DateTime      @default(now())
+  job                   ResearchJob   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  task                  ResearchTask? @relation(fields: [taskId], references: [id])
+  citations             Citation[]
+}
+
+model Claim {
+  id                 String      @id @default(uuid())
+  jobId              String
+  claimText          String
+  status             String      @default("UNSUPPORTED")
+  confidenceScore    Float       @default(0.0)
+  explanation        String?
+  evidenceIds        String      @default("[]")
+  supportStatus      String?
+  supportConfidence  Float?
+  quotedEvidence     String?
+  reasoning          String?
+  createdAt          DateTime    @default(now())
+  job                ResearchJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  citations          Citation[]
+}
+
+model Citation {
+  id                String        @id @default(uuid())
+  claimId           String
+  evidenceId        String?
+  jobId             String?
+  url               String
+  title             String
+  publisher         String
+  isValid           Boolean       @default(true)
+  supportsClaim     Boolean       @default(true)
+  supportStatus     String        @default("UNSUPPORTED")
+  supportConfidence Float         @default(0.0)
+  explanation       String?
+  quotedEvidence    String?
+  reasoning         String?
+  createdAt         DateTime      @default(now())
+  claim             Claim         @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  evidence          EvidenceItem? @relation(fields: [evidenceId], references: [id])
+  job               ResearchJob?  @relation(fields: [jobId], references: [id])
+}
+
+model Contradiction {
+  id                      String      @id @default(uuid())
+  jobId                   String
+  claimText               String
+  sourceA                 String
+  sourceB                 String
+  isContradiction         Boolean     @default(true)
+  differenceType          String      @default("genuine contradiction")
+  contradictionConfidence Float       @default(0.0)
+  explanation             String?
+  likelyReason            String?
+  evidenceIds             String      @default("[]")
+  createdAt               DateTime    @default(now())
+  job                     ResearchJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model VerificationReport {
+  id                String      @id @default(uuid())
+  jobId             String      @unique
+  summaryMarkdown   String
+  confidenceScore   Float
+  auditTrailJson    String
+  createdAt         DateTime    @default(now())
+  job               ResearchJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  details   String
+  agent     String   @default("System")
+  timestamp DateTime @default(now())
+}

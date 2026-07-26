@@ -1,0 +1,460 @@
+/**
+ * INNOGEN AUTONOMOUS RESEARCH ENGINE - FRONTEND SPA APPLICATION
+ */
+
+let currentJobId = null;
+let activeWs = null;
+let lastReportMarkdown = '';
+
+document.addEventListener('DOMContentLoaded', () => {
+  initTabRouting();
+  initLiveClock();
+  initResearchForm();
+  initWebSocketConnection();
+  initGlobalSearch();
+  initSampleQuery();
+  initReportActions();
+  initResearchHistory();
+});
+
+/* --------------------------------------------------------------------------
+   1. TAB ROUTING & NAVIGATION
+   -------------------------------------------------------------------------- */
+function initTabRouting() {
+  const allNavItems = document.querySelectorAll('.nav-menu .nav-item, .top-nav-item');
+  const viewPanels = document.querySelectorAll('.view-panel');
+
+  function activateView(targetViewId) {
+    if (!targetViewId) return;
+    document.querySelectorAll('.nav-menu .nav-item, .top-nav-item').forEach(n => n.classList.remove('active'));
+    viewPanels.forEach(p => p.classList.remove('active'));
+    document.querySelectorAll(`[data-target="${targetViewId}"]`).forEach(n => n.classList.add('active'));
+    const targetPanel = document.getElementById(targetViewId);
+    if (targetPanel) targetPanel.classList.add('active');
+  }
+
+  allNavItems.forEach(item => {
+    item.addEventListener('click', () => {
+      activateView(item.getAttribute('data-target'));
+    });
+  });
+
+  const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+  const sidebar = document.querySelector('.sidebar');
+  if (mobileMenuBtn && sidebar) {
+    mobileMenuBtn.addEventListener('click', () => {
+      sidebar.classList.toggle('mobile-open');
+    });
+  }
+}
+
+function initLiveClock() {
+  function updateClock() {
+    const el = document.getElementById('header-datetime');
+    if (el) {
+      const now = new Date();
+      el.textContent = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+    }
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+}
+
+/* --------------------------------------------------------------------------
+   2. RESEARCH QUERY SUBMISSION & API CALL
+   -------------------------------------------------------------------------- */
+function initResearchForm() {
+  const startBtn = document.getElementById('start-research-btn');
+  const queryInput = document.getElementById('research-query-input');
+  const depthSelect = document.getElementById('research-depth-select');
+  const academicCheck = document.getElementById('academic-only-check');
+
+  if (!startBtn || !queryInput) return;
+
+  startBtn.addEventListener('click', async () => {
+    const query = queryInput.value.trim();
+    if (!query) {
+      showToast('Please enter a research question first.');
+      return;
+    }
+
+    startBtn.disabled = true;
+    startBtn.innerHTML = `<span>Executing Graph...</span>`;
+
+    try {
+      const res = await fetch('/api/v1/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          depth: depthSelect ? depthSelect.value : 'standard',
+          academicOnly: academicCheck ? academicCheck.checked : false
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        currentJobId = data.jobId;
+        showToast(`Research Job Created: ${data.jobId}`);
+        revealJobProgressCard(query);
+        pollJobStatus(currentJobId);
+      } else {
+        showToast(`Error: ${data.error}`);
+        startBtn.disabled = false;
+        startBtn.innerHTML = `<span>Start Autonomous Research</span>`;
+      }
+    } catch (err) {
+      console.error('Research submission error:', err);
+      showToast('Failed to connect to Research API Gateway.');
+      startBtn.disabled = false;
+      startBtn.innerHTML = `<span>Start Autonomous Research</span>`;
+    }
+  });
+}
+
+function revealJobProgressCard(query) {
+  const activeJobCard = document.getElementById('active-job-card');
+  const activeQueryEl = document.getElementById('active-job-query');
+  const statusBadge = document.getElementById('job-status-badge');
+
+  if (activeJobCard) activeJobCard.classList.remove('hidden');
+  if (activeQueryEl) activeQueryEl.innerText = query;
+  if (statusBadge) {
+    statusBadge.className = 'status-badge processing';
+    statusBadge.innerText = 'PROCESSING';
+  }
+
+  // Reset all pipeline node status indicators
+  const pNodes = document.querySelectorAll('.p-node');
+  pNodes.forEach(node => {
+    node.className = 'p-node waiting';
+  });
+}
+
+/* --------------------------------------------------------------------------
+   3. WEBSOCKET REAL-TIME AGENT PIPELINE MONITOR
+   -------------------------------------------------------------------------- */
+function initWebSocketConnection() {
+  try {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/agent`;
+    activeWs = new WebSocket(wsUrl);
+
+    activeWs.onopen = () => {
+      console.log('[WebSocket] Connected to InnoGen 10-Agent Feed');
+      const latencyEl = document.querySelector('.model-latency');
+      if (latencyEl) latencyEl.innerText = 'Status: Connected • 10-Agent Graph';
+    };
+
+    activeWs.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.node) {
+          updatePipelineNodeUI(data.node, data.status, data.message);
+        }
+      } catch (err) {
+        // Silent catch
+      }
+    };
+  } catch (err) {
+    console.log('[WebSocket] Client running in REST polling fallback mode');
+  }
+}
+
+function updatePipelineNodeUI(nodeName, status, message) {
+  const activeAgentHighlight = document.getElementById('pipeline-active-agent');
+  if (activeAgentHighlight) {
+    activeAgentHighlight.innerText = `${nodeName}: ${message || status}`;
+  }
+
+  const pNodes = document.querySelectorAll('.p-node');
+  pNodes.forEach(n => {
+    const targetNode = n.getAttribute('data-node');
+    if (targetNode === nodeName) {
+      if (status === 'RUNNING') {
+        n.className = 'p-node running';
+      } else if (status === 'COMPLETED') {
+        n.className = 'p-node completed';
+      }
+    }
+  });
+}
+
+/* --------------------------------------------------------------------------
+   4. JOB STATUS POLLING & REPORT RENDER
+   -------------------------------------------------------------------------- */
+async function pollJobStatus(jobId) {
+  const pollInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/v1/research/${jobId}`);
+      if (!res.ok) return;
+
+      const data = await res.json();
+      if (data.success && data.job) {
+        const job = data.job;
+
+        const confEl = document.getElementById('active-job-confidence');
+        const halEl = document.getElementById('active-job-hallucination');
+        if (confEl && job.overallConfidence !== undefined && job.overallConfidence !== null) confEl.innerText = `${Number(job.overallConfidence).toFixed(1)}%`;
+        if (halEl && job.hallucinationScore !== undefined && job.hallucinationScore !== null) halEl.innerText = `${Number(job.hallucinationScore).toFixed(1)}%`;
+
+        loadClaimsMatrix(jobId);
+
+        if (job.status === 'COMPLETED') {
+          clearInterval(pollInterval);
+          const statusBadge = document.getElementById('job-status-badge');
+          if (statusBadge) {
+            statusBadge.className = 'status-badge completed';
+            statusBadge.innerText = 'COMPLETED';
+          }
+
+          const startBtn = document.getElementById('start-research-btn');
+          if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.innerHTML = `<span>Start Autonomous Research</span>`;
+          }
+
+          showToast('Multi-Agent Research Job Completed!');
+          await loadVerifiedReport(jobId);
+          await loadClaimsMatrix(jobId);
+          initResearchHistory();
+        }
+      }
+    } catch (err) {
+      console.error('Polling error:', err);
+    }
+  }, 1500);
+}
+
+async function loadVerifiedReport(jobId) {
+  try {
+    const res = await fetch(`/api/v1/research/${jobId}/report`);
+    const data = await res.json();
+    if (data.success && data.report) {
+      lastReportMarkdown = data.report.summaryMarkdown || '';
+      const renderBody = document.getElementById('report-render-body');
+      if (renderBody) {
+        renderBody.innerHTML = simpleMarkdownToHtml(lastReportMarkdown);
+      }
+      const tsTag = document.getElementById('report-timestamp-tag');
+      if (tsTag) {
+        tsTag.textContent = 'Report: ' + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString();
+      }
+    }
+  } catch (err) {
+    console.error('Report fetch error:', err);
+  }
+}
+
+async function loadClaimsMatrix(jobId) {
+  try {
+    const res = await fetch(`/api/v1/research/${jobId}`);
+    const data = await res.json();
+    if (data.success && data.job && data.job.claims) {
+      const tbody = document.getElementById('claims-matrix-tbody');
+      if (!tbody) return;
+
+      if (data.job.claims.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No claims extracted yet.</td></tr>`;
+        return;
+      }
+
+      const evidenceMap = {};
+      (data.job.evidenceItems || []).forEach(ev => { evidenceMap[ev.id] = ev; });
+
+      const citationsByClaim = {};
+      (data.job.citations || []).forEach(cit => {
+        if (!citationsByClaim[cit.claimId]) citationsByClaim[cit.claimId] = [];
+        citationsByClaim[cit.claimId].push(cit);
+      });
+
+      tbody.innerHTML = data.job.claims.map((c) => {
+        const evId = (c.evidenceIds && c.evidenceIds.length > 0) ? c.evidenceIds[0] : null;
+        const ev = evId ? evidenceMap[evId] : null;
+        const claimCitations = citationsByClaim[c.id] || [];
+        const citationSources = claimCitations.map(ce => ce.sourceTitle).filter(Boolean).join(', ') || '—';
+        const quotedEv = claimCitations.map(ce => ce.quotedEvidence).filter(Boolean).join('; ') || '—';
+        const reasoning = claimCitations.map(ce => ce.reasoning).filter(Boolean).join('; ') || '—';
+        return `
+        <tr>
+          <td><strong>${c.claimText}</strong></td>
+          <td><span class="badge-status ${c.status || 'UNCHECKED'}">${c.status || 'UNCHECKED'}</span></td>
+          <td><strong style="color:var(--accent-emerald);">${c.confidenceScore || 0}%</strong></td>
+          <td>${ev ? `<a href="${ev.sourceUrl}" target="_blank">${ev.sourceTitle}</a>` : '—'}</td>
+          <td style="font-size:12px;max-width:250px;">${citedStatusDisplay(claimCitations)}</td>
+          <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${quotedEv}">${quotedEv}</td>
+          <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${reasoning}">${reasoning}</td>
+        </tr>
+      `}).join('');
+
+      function citedStatusDisplay(cits) {
+        if (!cits.length) return '<span style="color:var(--text-muted)">—</span>';
+        return cits.map(cit => {
+          const color = cit.supportStatus === 'SUPPORTED' ? 'var(--accent-emerald)' : cit.supportStatus === 'PARTIALLY_SUPPORTED' ? 'var(--accent-amber)' : 'var(--accent-pink)';
+          return `<span style="color:${color};font-weight:600;">${cit.supportStatus || 'UNKNOWN'} (${cit.supportConfidence || 0}%)</span>`;
+        }).join('<br>');
+      }
+    }
+  } catch (err) {
+    console.error('Claims matrix fetch error:', err);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   5. REPORT COPY / DOWNLOAD & RESEARCH HISTORY
+   -------------------------------------------------------------------------- */
+function initReportActions() {
+  const copyBtn = document.getElementById('copy-report-btn');
+  const downloadBtn = document.getElementById('download-report-btn');
+
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      if (!lastReportMarkdown) {
+        showToast('No report available to copy.');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(lastReportMarkdown);
+        showToast('Report markdown copied to clipboard.');
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = lastReportMarkdown;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('Report markdown copied to clipboard.');
+      }
+    });
+  }
+
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', () => {
+      if (!lastReportMarkdown) {
+        showToast('No report available to download.');
+        return;
+      }
+      const blob = new Blob([lastReportMarkdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `innogen-report-${currentJobId || 'unknown'}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Report downloaded.');
+    });
+  }
+}
+
+async function initResearchHistory() {
+  try {
+    const res = await fetch('/api/v1/research');
+    const data = await res.json();
+    if (data.success && Array.isArray(data.jobs)) {
+      renderResearchHistory(data.jobs);
+    }
+  } catch (err) {
+    console.error('Research history fetch error:', err);
+  }
+}
+
+function renderResearchHistory(jobs) {
+  const container = document.getElementById('reports-history-list');
+  if (!container) return;
+
+  const completedJobs = jobs.filter(j => j.status === 'COMPLETED').reverse();
+
+  if (completedJobs.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;">No completed research jobs yet.</div>';
+    return;
+  }
+
+  container.innerHTML = completedJobs.map(job => {
+    return `
+      <div class="history-item glass-card" style="padding:16px;margin-bottom:12px;cursor:pointer;" data-job-id="${job.id}">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <strong style="color:var(--text-primary);">${job.query}</strong>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+              ${new Date(job.createdAt).toLocaleString()} &middot;
+              Confidence: ${job.overallConfidence !== undefined ? Number(job.overallConfidence).toFixed(1) : '—'}% &middot;
+              Hallucination: ${job.hallucinationScore !== undefined ? Number(job.hallucinationScore).toFixed(1) : '—'}%
+            </div>
+          </div>
+          <span class="status-badge completed">COMPLETED</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.history-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const jobId = el.getAttribute('data-job-id');
+      if (jobId) {
+        currentJobId = jobId;
+        document.querySelector('[data-target="workspace-view"]')?.click();
+        loadVerifiedReport(jobId);
+        loadClaimsMatrix(jobId);
+        showToast('Loaded historical research report.');
+      }
+    });
+  });
+}
+
+/* --------------------------------------------------------------------------
+   6. UTILS & SAMPLE QUERY LOADER
+   -------------------------------------------------------------------------- */
+function initSampleQuery() {
+  const sampleBtn = document.getElementById('sample-query-btn');
+  const queryInput = document.getElementById('research-query-input');
+
+  if (sampleBtn && queryInput) {
+    sampleBtn.addEventListener('click', () => {
+      queryInput.value = 'Is India on track to achieve its renewable energy targets?';
+      showToast('Loaded sample research question.');
+    });
+  }
+}
+
+function initGlobalSearch() {
+  const searchInput = document.getElementById('global-search-input');
+  if (searchInput) {
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInput.focus();
+      }
+    });
+  }
+}
+
+function simpleMarkdownToHtml(md) {
+  if (!md) return '';
+  let html = md
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+    .replace(/`([^`]+)`/gim, '<code>$1</code>')
+    .replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\n\n/g, '<br><br>');
+  return html;
+}
+
+function showToast(message) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerText = message;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.remove();
+  }, 3500);
+}

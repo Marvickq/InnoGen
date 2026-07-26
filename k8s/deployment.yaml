@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: innogen-backend
+  labels:
+    app: innogen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: innogen
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: innogen
+        tier: backend
+    spec:
+      containers:
+        - name: backend
+          image: innogen-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: innogen-config
+            - secretRef:
+                name: innogen-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: innogen-postgres
+  labels:
+    app: innogen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: innogen
+      tier: postgres
+  template:
+    metadata:
+      labels:
+        app: innogen
+        tier: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "innogen"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: innogen-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: "innogen"
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: innogen-pgdata
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: innogen-redis
+  labels:
+    app: innogen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: innogen
+      tier: redis
+  template:
+    metadata:
+      labels:
+        app: innogen
+        tier: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 15

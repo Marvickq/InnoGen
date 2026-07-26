@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InnoGen - Autonomous Multi-Agent Research & Fact-Verification System</title>
+  <meta name="description" content="InnoGen is an autonomous multi-agent research platform that collects evidence, verifies citations, detects contradictions, checks for hallucinations, and produces citation-backed research reports.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Main Stylesheet -->
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="theme-obsidian">
+  
+  <div class="app-layout">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand-container">
+        <div class="brand-logo">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 2L28 9V23L16 30L4 23V9L16 2Z" fill="url(#brand-grad)" fill-opacity="0.8"/>
+            <path d="M16 8L22 11.5V18.5L16 22L10 18.5V11.5L16 8Z" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="16" cy="15" r="3" fill="#10B981"/>
+            <defs>
+              <linearGradient id="brand-grad" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#6366F1"/>
+                <stop offset="0.5" stop-color="#8B5CF6"/>
+                <stop offset="1" stop-color="#06B6D4"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">Inno<span class="highlight">Gen</span></span>
+          <span class="brand-tag">RESEARCH ENGINE v5.0</span>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" data-target="workspace-view">
+          <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Research Workspace</span>
+        </button>
+
+        <button class="nav-item" data-target="evidence-view">
+          <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span>Claims & Evidence</span>
+        </button>
+
+        <button class="nav-item" data-target="reports-view">
+          <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+          <span>Research History</span>
+        </button>
+
+        <button class="nav-item" data-target="settings-view">
+          <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Settings</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="model-status-card">
+          <div class="status-indicator online"></div>
+          <div class="model-info">
+            <span class="model-name">10-Agent LangGraph Pipeline</span>
+            <span class="model-latency">Status: Ready • Fact Verification</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-wrapper">
+      
+      <!-- Top Navigation Bar -->
+      <header class="top-header">
+        <div class="top-nav-bar">
+          <button class="top-nav-item active" data-target="workspace-view">Research Workspace</button>
+          <button class="top-nav-item" data-target="evidence-view">Claims & Evidence</button>
+          <button class="top-nav-item" data-target="reports-view">Research History</button>
+          <button class="top-nav-item" data-target="settings-view">Settings</button>
+        </div>
+
+        <div class="header-actions">
+          <span id="header-datetime" style="font-size:13px;color:var(--text-muted);font-family:var(--font-mono);margin-right:12px;"></span>
+          <button class="action-btn secondary-btn" id="sample-query-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>Load Sample Query</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- View Containers -->
+      <div class="view-container">
+
+        <!-- 1. RESEARCH WORKSPACE VIEW -->
+        <section id="workspace-view" class="view-panel active">
+          
+          <!-- Query Submission Banner Card -->
+          <div class="glass-card query-banner-card">
+            <div class="query-card-header">
+              <h2>Autonomous Research & Fact Verification</h2>
+              <p>Enter any factual question to trigger parallel web research, evidence extraction, citation auditing, and contradiction detection.</p>
+            </div>
+
+            <div class="query-input-form">
+              <textarea id="research-query-input" rows="3" placeholder="e.g. Is India on track to achieve its renewable energy targets?"></textarea>
+              
+              <div class="query-options-bar">
+                <div class="option-group">
+                  <label for="research-depth-select">Research Depth:</label>
+                  <select id="research-depth-select" class="glass-select">
+                    <option value="standard">Standard (Fast Multi-Source Search)</option>
+                    <option value="deep">Deep Academic & Regulatory Audit</option>
+                  </select>
+                </div>
+
+                <div class="option-group checkbox-group">
+                  <label>
+                    <input type="checkbox" id="academic-only-check">
+                    <span>Academic & Government Sources Only</span>
+                  </label>
+                </div>
+
+                <button id="start-research-btn" class="action-btn primary-btn glowing-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  <span>Start Autonomous Research</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Active Research Job Progress Card -->
+          <div id="active-job-card" class="glass-card job-status-card hidden">
+            <div class="job-header">
+              <div class="job-title-group">
+                <span class="status-badge processing" id="job-status-badge">PROCESSING</span>
+                <h3 id="active-job-query">Research Query Placeholder</h3>
+              </div>
+              <div class="job-metrics">
+                <div class="job-metric">
+                  <span class="m-val" id="active-job-confidence">--%</span>
+                  <span class="m-lbl">Overall Confidence</span>
+                </div>
+                <div class="job-metric">
+                  <span class="m-val" id="active-job-hallucination">--%</span>
+                  <span class="m-lbl">Hallucination Index</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Agent Pipeline Progress Bar -->
+            <div class="pipeline-progress-wrapper">
+              <div class="pipeline-header-label">
+                <span>10-AGENT LANGGRAPH STATE PIPELINE</span>
+                <span id="pipeline-active-agent" class="agent-highlight">Initializing Agents...</span>
+              </div>
+              <div class="pipeline-nodes-bar" id="pipeline-nodes-bar">
+                <div class="p-node waiting" data-node="Planner">1. Planner</div>
+                <div class="p-node waiting" data-node="Task Decomposer">2. Decomposer</div>
+                <div class="p-node waiting" data-node="Parallel Research Agents">3. Research</div>
+                <div class="p-node waiting" data-node="Evidence Collection">4. Evidence</div>
+                <div class="p-node waiting" data-node="Claim Extraction">5. Claims</div>
+                <div class="p-node waiting" data-node="Citation Verification">6. Citations</div>
+                <div class="p-node waiting" data-node="Fact Verification">7. Fact Verify</div>
+                <div class="p-node waiting" data-node="Contradiction Detection">8. Contradictions</div>
+                <div class="p-node waiting" data-node="Hallucination Check">9. Support Check</div>
+                <div class="p-node waiting" data-node="Consensus & Confidence">10. Consensus</div>
+                <div class="p-node waiting" data-node="Report Generator">11. Report</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Verified Report Output Panel -->
+          <div id="report-output-panel" class="glass-card report-card">
+            <div class="report-header-bar">
+              <div class="report-meta">
+                <span class="report-badge">VERIFIED CITATION REPORT</span>
+                <span id="report-timestamp-tag" class="report-time">Latest Job Results</span>
+              </div>
+              <div class="report-actions">
+                <button class="action-btn icon-only-btn" id="copy-report-btn" title="Copy Markdown">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <button class="action-btn icon-only-btn" id="download-report-btn" title="Download Report">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </button>
+              </div>
+            </div>
+            
+            <div class="report-render-body" id="report-render-body">
+              <div class="report-placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <h3>No Research Job Executed Yet</h3>
+                <p>Enter a research question above and click <strong>"Start Autonomous Research"</strong> to generate a verified, evidence-backed citation report.</p>
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- 2. EVIDENCE & CLAIMS VIEW -->
+        <section id="evidence-view" class="view-panel">
+          <div class="glass-card">
+            <div class="card-header">
+              <h2>Extracted Claims & Citation Verification Matrix</h2>
+              <p>Direct claim-to-source traceability matrix showing verification status and confidence scores.</p>
+            </div>
+            
+            <div class="claims-table-container">
+              <table class="doc-table claims-matrix-table">
+                <thead>
+                  <tr>
+                    <th>Claim Statement</th>
+                    <th>Verification Status</th>
+                    <th>Confidence</th>
+                    <th>Primary Source</th>
+                    <th>Citation Support</th>
+                  </tr>
+                </thead>
+                <tbody id="claims-matrix-tbody">
+                  <tr>
+                    <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">Run a research job to inspect extracted claim items and verification status.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. VERIFIED REPORTS HISTORY VIEW -->
+        <section id="reports-view" class="view-panel">
+          <div class="glass-card">
+            <div class="card-header">
+              <h2>Research History</h2>
+              <p>Audit trail of all executed multi-agent research jobs, confidence ratings, and markdown reports.</p>
+            </div>
+            
+            <div class="reports-history-list" id="reports-history-list">
+              <div style="text-align: center; color: var(--text-muted); padding: 32px;">No historical research jobs stored yet.</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. SETTINGS VIEW -->
+        <section id="settings-view" class="view-panel">
+          <div class="glass-card">
+            <div class="card-header">
+              <h2>Settings</h2>
+              <p>Research engine configuration and API status.</p>
+            </div>
+            <div style="padding:24px;">
+              <div style="display:grid;gap:16px;max-width:500px;">
+                <div class="glass-card" style="padding:16px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <strong>Research Pipeline</strong>
+                      <div style="font-size:12px;color:var(--text-muted);">10-Agent LangGraph Pipeline</div>
+                    </div>
+                    <div class="status-indicator online" style="width:10px;height:10px;"></div>
+                  </div>
+                </div>
+                <div class="glass-card" style="padding:16px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <strong>Primary LLM</strong>
+                      <div style="font-size:12px;color:var(--text-muted);">Groq (llama-3.1-8b-instant)</div>
+                    </div>
+                    <div class="status-indicator online" style="width:10px;height:10px;"></div>
+                  </div>
+                </div>
+                <div class="glass-card" style="padding:16px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <strong>Fallback LLM</strong>
+                      <div style="font-size:12px;color:var(--text-muted);">Gemini</div>
+                    </div>
+                    <div class="status-indicator online" style="width:10px;height:10px;"></div>
+                  </div>
+                </div>
+                <div class="glass-card" style="padding:16px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <strong>Primary Search</strong>
+                      <div style="font-size:12px;color:var(--text-muted);">Serper</div>
+                    </div>
+                    <div class="status-indicator online" style="width:10px;height:10px;"></div>
+                  </div>
+                </div>
+                <div class="glass-card" style="padding:16px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <strong>Fallback Search</strong>
+                      <div style="font-size:12px;color:var(--text-muted);">Tavily</div>
+                    </div>
+                    <div class="status-indicator online" style="width:10px;height:10px;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- App Core JavaScript -->
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

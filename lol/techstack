@@ -1,0 +1,19 @@
+# Technology Stack: InnoGen Autonomous Research Engine
+
+## 1. Frontend Layer
+- **Language**: Modern ES6+ JavaScript & HTML5
+- **Styling**: Vanilla CSS3 (Obsidian Dark Research Workspace design system, CSS Variables, CSS Grid/Flexbox).
+- **Fonts**: Google Fonts (`Plus Jakarta Sans` & `JetBrains Mono`).
+- **Graph Visualizer**: Interactive SVG & HTML5 Canvas graph execution map.
+- **Build Tool**: Vite hot module reloading.
+
+## 2. Backend & API Services
+- **Runtime**: Node.js (ES Modules) & Express.js.
+- **API Standards**: RESTful endpoints (`/api/v1/research/...`) & WebSocket Server (`/ws/agent`).
+- **Database**: SQLite (local) / PostgreSQL with Prisma ORM.
+- **Agent Workflow Engine**: LangGraph StateGraph multi-agent execution pipeline.
+
+## 3. External API & Integration Layer
+- **Search Provider**: Tavily Search API / HTTP Web Retrieval Service.
+- **LLM Provider**: Google Gemini API / OpenAI API client.
+- **Secret Management**: Environment variables via `.env`.
