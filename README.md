@@ -17,6 +17,24 @@ Unlike traditional AI assistants that rely on a single model response, this syst
 ## Live demo
 
 https://innogen-i21p.onrender.com
+
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
+![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss)
+![Framer Motion](https://img.shields.io/badge/Framer_Motion-Animations-FF0055?logo=framer)
+![Lucide React](https://img.shields.io/badge/Lucide_React-Icons-F8F2D8)
+![Google Fonts](https://img.shields.io/badge/Fonts-Almarai_%26_Instrument_Serif-4285F4?logo=googlefonts)
+
+![Node.js](https://img.shields.io/badge/Node.js-Runtime-339933?logo=node.js)
+![Python](https://img.shields.io/badge/Python-AI_Integration-3776AB?logo=python)
+![OpenAI](https://img.shields.io/badge/OpenAI-LLM_API-412991?logo=openai)
+![LangChain](https://img.shields.io/badge/LangChain-Agent_Framework-1C3C3C)
+
+![Git](https://img.shields.io/badge/Git-Version_Control-F05032?logo=git)
+![GitHub](https://img.shields.io/badge/GitHub-Code_Repository-181717?logo=github)
+![Vercel](https://img.shields.io/badge/Deployment-Vercel-000000?logo=vercel)
+
 ## Problem
 Problem
 
@@ -94,22 +112,7 @@ This creates an AI system that does not just generate answers, but **researches,
 - Confidence score visualization
 - Research quality insights## Tech Stack
 
-![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
-![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss)
-![Framer Motion](https://img.shields.io/badge/Framer_Motion-Animations-FF0055?logo=framer)
-![Lucide React](https://img.shields.io/badge/Lucide_React-Icons-F8F2D8)
-![Google Fonts](https://img.shields.io/badge/Fonts-Almarai_%26_Instrument_Serif-4285F4?logo=googlefonts)
 
-![Node.js](https://img.shields.io/badge/Node.js-Runtime-339933?logo=node.js)
-![Python](https://img.shields.io/badge/Python-AI_Integration-3776AB?logo=python)
-![OpenAI](https://img.shields.io/badge/OpenAI-LLM_API-412991?logo=openai)
-![LangChain](https://img.shields.io/badge/LangChain-Agent_Framework-1C3C3C)
-
-![Git](https://img.shields.io/badge/Git-Version_Control-F05032?logo=git)
-![GitHub](https://img.shields.io/badge/GitHub-Code_Repository-181717?logo=github)
-![Vercel](https://img.shields.io/badge/Deployment-Vercel-000000?logo=vercel)
 ## Research References
 
 
