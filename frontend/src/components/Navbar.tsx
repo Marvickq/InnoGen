@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, History, BarChart3, Settings, Wifi, WifiOff, User } from 'lucide-react';
+import { Search, History, LayoutDashboard, Settings, Wifi, WifiOff, User } from 'lucide-react';
 
 interface NavbarProps {
   activeView: string;
@@ -10,8 +10,8 @@ interface NavbarProps {
 
 const navItems = [
   { id: 'research', label: 'Research', icon: Search },
+  { id: 'workspace', label: 'Workspace', icon: LayoutDashboard },
   { id: 'history', label: 'History', icon: History },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

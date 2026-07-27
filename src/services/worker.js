@@ -1,4 +1,3 @@
-import { dequeueJob, enqueueJob } from './redis.js';
 import { executeResearchGraph } from '../agents/researchGraph.js';
 import { logger, incrementMetric, startTimer, endTimer } from './monitor.js';
 import { db } from '../db/prisma.js';
@@ -22,20 +21,22 @@ export function stopWorker() {
 async function poll() {
   if (!running) return;
   try {
-    const jobId = await dequeueJob(3);
-    if (jobId) {
-      logger.info(`[Worker] Processing job ${jobId}...`);
-      incrementMetric('graphExecutions');
-      const timer = startTimer('graph');
-      try {
-        await executeResearchGraph(jobId);
-        const dur = endTimer('graph');
-        logger.info(`[Worker] Job ${jobId} completed in ${dur}ms.`);
-        incrementMetric('jobsCompleted');
-      } catch (err) {
-        logger.error(`[Worker] Job ${jobId} failed: ${err.message}`);
-        incrementMetric('jobsFailed');
-        try { db.job.update(jobId, { status: 'FAILED' }); } catch {}
+    const jobs = await db.job.findByStatus('PROCESSING');
+    if (jobs && jobs.length > 0) {
+      for (const job of jobs) {
+        logger.info(`[Worker] Processing job ${job.id}...`);
+        incrementMetric('graphExecutions');
+        const timer = startTimer('graph');
+        try {
+          await executeResearchGraph(job.id);
+          const dur = endTimer('graph');
+          logger.info(`[Worker] Job ${job.id} completed in ${dur}ms.`);
+          incrementMetric('jobsCompleted');
+        } catch (err) {
+          logger.error(`[Worker] Job ${job.id} failed: ${err.message}`);
+          incrementMetric('jobsFailed');
+          try { await db.job.update(job.id, { status: 'FAILED' }); } catch {}
+        }
       }
     }
   } catch (err) {
@@ -47,13 +48,8 @@ async function poll() {
 }
 
 export async function submitJob(jobId) {
-  const queued = await enqueueJob(jobId);
-  if (queued) {
-    logger.info(`[Worker] Job ${jobId} submitted to queue.`);
-  } else {
-    logger.warn(`[Worker] Redis unavailable — executing job ${jobId} inline.`);
-    process.nextTick(async () => {
-          try { await executeResearchGraph(jobId); } catch (err) { logger.error(`[Worker] Inline job ${jobId} failed: ${err.message}`); }
-        });
-  }
+  logger.info(`[Worker] Job ${jobId} submitted.`);
+  process.nextTick(async () => {
+    try { await executeResearchGraph(jobId); } catch (err) { logger.error(`[Worker] Job ${jobId} failed: ${err.message}`); }
+  });
 }

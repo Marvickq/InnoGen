@@ -10,7 +10,7 @@ dotenv.config();
 import researchRouter from './src/routes/research.js';
 import { registerWsClient } from './src/agents/researchGraph.js';
 import { db } from './src/db/prisma.js';
-import { connectRedis, isRedisEnabled } from './src/services/redis.js';
+
 import { startWorker, stopWorker } from './src/services/worker.js';
 import { apiLogger, logger, getMetrics, incrementMetric } from './src/services/monitor.js';
 
@@ -37,7 +37,6 @@ app.get('/api/v1/health', (req, res) => {
       apiGateway: 'ONLINE',
       researchGraphEngine: 'ONLINE',
       database: 'ONLINE',
-      redis: isRedisEnabled() ? 'ONLINE' : 'DISABLED',
       wsAgentStream: 'ONLINE'
     },
     uptime: process.uptime()
@@ -62,13 +61,6 @@ wss.on('connection', (ws) => {
 
 async function start() {
   try {
-    await connectRedis();
-    logger.info('[Server] Redis initialized.');
-  } catch (err) {
-    logger.warn(`[Server] Redis not available: ${err.message}`);
-  }
-
-  try {
     await db.job.findMany();
     logger.info('[Server] Database connection verified.');
   } catch (err) {
@@ -84,7 +76,6 @@ async function start() {
     logger.info(`REST API:   http://localhost:${PORT}/api/v1/health`);
     logger.info(`WebSocket:  ws://localhost:${PORT}/ws/agent`);
     logger.info(`Workspace:  http://localhost:${PORT}/`);
-    logger.info(`Redis:      ${isRedisEnabled() ? 'CONNECTED' : 'DISABLED'}`);
     logger.info(`=======================================================`);
   });
 }

@@ -38,7 +38,7 @@ export async function executeLlmInference(prompt, systemInstruction = '') {
   if (geminiKey) {
     try {
       const ai = new GoogleGenerativeAI(geminiKey);
-      const model = ai.getGenerativeModel({ model: 'gemini-3.5-flash' });
+      const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
       const response = await model.generateContent(`${systemInstruction}\n\n${prompt}`);
       if (response.response && response.response.text) {
         return response.response.text();

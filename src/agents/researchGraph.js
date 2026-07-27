@@ -27,7 +27,7 @@ const ResearchState = Annotation.Root({
   query: Annotation(),
   depth: Annotation(),
   academicOnly: Annotation(),
-  objectives: Annotation(),
+  researchPlan: Annotation(),
   tasks: Annotation(),
   rawSearchResults: Annotation(),
   evidence: Annotation(),
@@ -35,59 +35,96 @@ const ResearchState = Annotation.Root({
   citations: Annotation(),
   contradictions: Annotation(),
   overallConfidence: Annotation(),
+  confidenceBreakdown: Annotation(),
   hallucinationScore: Annotation(),
+  sourceRankings: Annotation(),
   reportMarkdown: Annotation()
 });
 
 async function plannerNode(state) {
-  broadcastNodeEvent({ node: 'Planner', status: 'RUNNING', message: 'Analyzing research question and defining objectives...' });
-  const systemInstruction = 'You are a research planner. Given a research query, list exactly 3 distinct research objectives to fully investigate the topic. Return only a raw JSON array of strings, with no markdown formatting or extra text.';
-  let objectives;
+  broadcastNodeEvent({ node: 'Planner', status: 'RUNNING' });
+  const systemInstruction = `You are a research planner. Given a research query, produce a structured research plan.
+
+Return ONLY a raw JSON object with:
+{
+  "objectives": ["objective 1", "objective 2", "objective 3"],
+  "subQuestions": ["sub-question 1", "sub-question 2", "sub-question 3"],
+  "investigationStrategy": "Brief description of how the research will be conducted",
+  "expectedEvidence": "What types of evidence are expected (e.g. government data, news reports, academic papers)"
+}
+
+No markdown formatting. No extra text. Exactly 3 objectives and 3 sub-questions.`;
+
+  let researchPlan;
   try {
     const cached = await getCachedLLM(state.query, systemInstruction, 'planner');
     const response = cached || await executeLlmInference(state.query, systemInstruction);
     if (!cached && response) await setCachedLLM(state.query, systemInstruction, 'planner', response, 600);
     const cleanResponse = (response || '').replace(/```json/g, '').replace(/```/g, '').trim();
-    objectives = JSON.parse(cleanResponse);
-    if (!Array.isArray(objectives)) throw new Error('Not an array');
+    const parsed = JSON.parse(cleanResponse);
+    if (!parsed || !Array.isArray(parsed.objectives)) throw new Error('Invalid plan structure');
+    researchPlan = {
+      objectives: parsed.objectives.slice(0, 3),
+      subQuestions: Array.isArray(parsed.subQuestions) ? parsed.subQuestions.slice(0, 3) : [],
+      investigationStrategy: typeof parsed.investigationStrategy === 'string' ? parsed.investigationStrategy : 'Multi-source cross-verification across government, academic, and news sources.',
+      expectedEvidence: typeof parsed.expectedEvidence === 'string' ? parsed.expectedEvidence : 'Web search results, academic references, and official publications.'
+    };
   } catch (err) {
     logger.warn(`[Planner Node] LLM parse failed: ${err.message}`);
-    objectives = [
-      `Determine current progress metrics and official target figures for "${state.query}"`,
-      `Gather independent authoritative reviews and market reports on "${state.query}"`,
-      `Identify potential bottlenecks, policy friction, or conflicting data points`
-    ];
+    researchPlan = {
+      objectives: [
+        `Find authoritative information about: ${state.query}`,
+        `Find expert analysis and commentary about: ${state.query}`,
+        `Find supporting evidence and related findings about: ${state.query}`
+      ],
+      subQuestions: [
+        `What are the primary facts about ${state.query}?`,
+        `What do authoritative sources say about ${state.query}?`,
+        `Are there differing perspectives on ${state.query}?`
+      ],
+      investigationStrategy: 'Multi-source cross-verification across government, academic, and news sources.',
+      expectedEvidence: 'Web search results, academic references, and official publications.'
+    };
   }
-  broadcastNodeEvent({ node: 'Planner', status: 'COMPLETED', message: `Formulated ${objectives.length} research objectives.` });
-  return { objectives };
+  broadcastNodeEvent({
+    node: 'Planner', status: 'COMPLETED',
+    plan: researchPlan
+  });
+  return { researchPlan };
 }
 
 async function decompositionNode(state) {
-  broadcastNodeEvent({ node: 'Task Decomposer', status: 'RUNNING', message: 'Decomposing research objectives into parallel tasks...' });
-  const systemInstruction = `You are a research task decomposer. Given a list of research objectives, decompose them into exactly 3 specific, targeted web search queries. Return only a raw JSON array of strings, with no markdown formatting or extra text. Objectives: ${JSON.stringify(state.objectives)}`;
+  broadcastNodeEvent({ node: 'Task Decomposer', status: 'RUNNING' });
+  const systemInstruction = `You are a research task decomposer. Given research objectives, generate exactly 3 specific web search queries. Each query must target different source types for comprehensive coverage.
+
+Return ONLY a raw JSON array of strings. No markdown formatting.`;
+
   let taskObjs;
   try {
-    const cached = await getCachedLLM(JSON.stringify(state.objectives), systemInstruction, 'decomposer');
+    const cached = await getCachedLLM(JSON.stringify(state.researchPlan), systemInstruction, 'decomposer');
     const response = cached || await executeLlmInference(`Generate 3 search queries for: ${state.query}`, systemInstruction);
-    if (!cached && response) await setCachedLLM(JSON.stringify(state.objectives), systemInstruction, 'decomposer', response, 600);
+    if (!cached && response) await setCachedLLM(JSON.stringify(state.researchPlan), systemInstruction, 'decomposer', response, 600);
     const cleanResponse = (response || '').replace(/```json/g, '').replace(/```/g, '').trim();
     taskObjs = JSON.parse(cleanResponse);
     if (!Array.isArray(taskObjs)) throw new Error('Not an array');
   } catch (err) {
     logger.warn(`[Decomposer Node] LLM parse failed: ${err.message}`);
     taskObjs = [
-      `Search official status reports and government targets for: ${state.query}`,
-      `Search independent energy agency reports (IEA, CEEW, Ember) for: ${state.query}`,
-      `Identify reported grid bottlenecks, capacity delays, or data discrepancies for: ${state.query}`
+      `Search authoritative reference sources for: ${state.query}`,
+      `Search expert analysis and commentary for: ${state.query}`,
+      `Search supporting evidence and related findings for: ${state.query}`
     ];
   }
   const createdTasks = await db.task.createMany(state.jobId, taskObjs);
-  broadcastNodeEvent({ node: 'Task Decomposer', status: 'COMPLETED', message: `Decomposed into ${createdTasks.length} parallel research tasks.` });
+  broadcastNodeEvent({
+    node: 'Task Decomposer', status: 'COMPLETED',
+    searchQueries: taskObjs
+  });
   return { tasks: createdTasks };
 }
 
 async function parallelResearchNode(state) {
-  broadcastNodeEvent({ node: 'Parallel Research Agents', status: 'RUNNING', message: 'Executing parallel web and academic data searches...' });
+  broadcastNodeEvent({ node: 'Parallel Research Agents', status: 'RUNNING' });
   const searchPromises = state.tasks.map(async t => {
     const cached = await getCachedSearch(t.objective, 'web');
     if (cached) return cached;
@@ -97,23 +134,75 @@ async function parallelResearchNode(state) {
   });
   const searchResultsArray = await Promise.all(searchPromises);
   const rawEvidenceList = [];
+  let totalResults = 0;
   searchResultsArray.forEach((results, idx) => {
     const taskId = state.tasks[idx]?.id;
     (results || []).forEach(res => {
       rawEvidenceList.push({ ...res, taskId });
+      totalResults++;
     });
   });
-  const msg = rawEvidenceList.length > 0
-    ? `Retrieved ${rawEvidenceList.length} search result snippets.`
-    : 'Search services unavailable — no web results could be retrieved.';
-  broadcastNodeEvent({ node: 'Parallel Research Agents', status: 'COMPLETED', message: msg });
+
+  const sources = rawEvidenceList.map(r => ({
+    url: r.url,
+    title: r.title,
+    publisher: r.publisher,
+    snippet: r.snippet ? r.snippet.substring(0, 200) : ''
+  }));
+
+  broadcastNodeEvent({
+    node: 'Parallel Research Agents', status: 'COMPLETED',
+    sourcesDiscovered: totalResults,
+    sources: totalResults > 0 ? sources : [{ note: 'No sources retrieved — search services returned empty. Confidence will be adjusted accordingly.' }]
+  });
   return { rawSearchResults: rawEvidenceList };
 }
 
+function classifySource(url, title, snippet, domainAuthorityScore) {
+  const hostname = (url || '').toLowerCase();
+  const fullText = ((title || '') + ' ' + (snippet || '')).toLowerCase();
+  let category = 'News';
+  if (hostname.endsWith('.gov') || hostname.endsWith('.gov.in') || hostname.endsWith('.gov.uk')) category = 'Government';
+  else if (hostname.endsWith('.edu') || hostname.endsWith('.ac.in') || hostname.endsWith('.ac.uk')) category = 'Academic';
+  else if (fullText.includes('wikipedia') || fullText.includes('wiki')) category = 'Encyclopedia';
+  else if (fullText.includes('bloomberg') || fullText.includes('reuters') || fullText.includes('bbc')) category = 'News';
+  return category;
+}
+
+function computeTrustScore(domainAuthorityScore, snippetLength) {
+  const base = (domainAuthorityScore || 0.55) * 100;
+  const snippetBonus = Math.min(5, (snippetLength || 0) / 40);
+  return Math.min(100, Math.round(base + snippetBonus));
+}
+
+function computeRelevanceScore(snippet, query) {
+  if (!snippet || !query) return 50;
+  const qWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  if (qWords.length === 0) return 50;
+  const snippetLower = snippet.toLowerCase();
+  const matchCount = qWords.filter(w => snippetLower.includes(w)).length;
+  return Math.min(100, Math.round(30 + (matchCount / qWords.length) * 70));
+}
+
+function sourceSelectionReason(category, trustScore, domainAuthorityScore) {
+  const reasons = [];
+  if (category === 'Government') reasons.push('Official government source — highest authority tier');
+  else if (category === 'Academic') reasons.push('Academic/educational institution — peer-reviewed standards');
+  else if (category === 'Encyclopedia') reasons.push('Encyclopedic reference — broad factual overview');
+  else reasons.push(`${category} source — evaluated for relevance`);
+  if (trustScore >= 80) reasons.push('High trust score based on domain reputation');
+  else if (trustScore < 50) reasons.push('Lower authority source — corroboration recommended');
+  return reasons.join('. ');
+}
+
 async function evidenceCollectionNode(state) {
-  broadcastNodeEvent({ node: 'Evidence Collection', status: 'RUNNING', message: 'Extracting structured evidence items with provenance...' });
+  broadcastNodeEvent({ node: 'Evidence Collection', status: 'RUNNING' });
   const storedEvidence = [];
   for (const raw of state.rawSearchResults) {
+    const category = classifySource(raw.url, raw.title, raw.snippet, raw.domainAuthorityScore);
+    const trustScore = computeTrustScore(raw.domainAuthorityScore, (raw.snippet || '').length);
+    const relevanceScore = computeRelevanceScore(raw.snippet, state.query);
+    const selectionReason = sourceSelectionReason(category, trustScore, raw.domainAuthorityScore);
     const ev = await db.evidence.create({
       jobId: state.jobId,
       taskId: raw.taskId,
@@ -123,22 +212,45 @@ async function evidenceCollectionNode(state) {
       snippet: raw.snippet,
       domainAuthorityScore: raw.domainAuthorityScore
     });
-    storedEvidence.push(ev);
+    const enriched = {
+      ...ev,
+      category,
+      trustScore,
+      relevanceScore,
+      selectionReason,
+      quotedStatement: raw.snippet ? raw.snippet.substring(0, 300) : ''
+    };
+    storedEvidence.push(enriched);
   }
-  broadcastNodeEvent({ node: 'Evidence Collection', status: 'COMPLETED', message: `Structured ${storedEvidence.length} evidence items.` });
+
+  const evidenceSummary = storedEvidence.map(e => ({
+    title: e.sourceTitle,
+    url: e.sourceUrl,
+    publisher: e.publisher,
+    category: e.category,
+    trustScore: e.trustScore,
+    relevanceScore: e.relevanceScore,
+    selectionReason: e.selectionReason,
+    snippet: e.snippet ? e.snippet.substring(0, 120) + '...' : ''
+  }));
+
+  broadcastNodeEvent({
+    node: 'Evidence Collection', status: 'COMPLETED',
+    evidenceItems: evidenceSummary.length > 0 ? evidenceSummary : [{ note: 'No evidence could be collected from available sources.' }]
+  });
   return { evidence: storedEvidence };
 }
 
 async function claimExtractionNode(state) {
-  broadcastNodeEvent({ node: 'Claim Extraction', status: 'RUNNING', message: 'Extracting testable factual claims from evidence...' });
+  broadcastNodeEvent({ node: 'Claim Extraction', status: 'RUNNING' });
   if (state.evidence.length === 0) {
-    broadcastNodeEvent({ node: 'Claim Extraction', status: 'COMPLETED', message: 'No evidence collected. Skipping claim extraction.' });
+    broadcastNodeEvent({ node: 'Claim Extraction', status: 'COMPLETED', claims: [] });
     return { claims: [] };
   }
   const evidenceInput = state.evidence.map(e => ({ id: e.id, snippet: e.snippet, title: e.sourceTitle, publisher: e.publisher, sourceUrl: e.sourceUrl }));
   const systemInstruction = `You are a fact extraction agent. Analyze the provided evidence items and extract key factual claims that can be directly verified from the evidence. For each claim, identify which evidence item IDs support it. Do NOT invent claims that are not present in the evidence. Each claim must map to at least one evidence ID.
 
-Return ONLY a raw JSON array of objects with the following schema:
+Return ONLY a raw JSON array of objects:
 [
   {
     "claimText": "Clean, concise factual statement that can be verified from evidence",
@@ -181,16 +293,23 @@ No markdown formatting or conversational text.`;
       }
     }
   }
-  broadcastNodeEvent({ node: 'Claim Extraction', status: 'COMPLETED', message: `Extracted ${claimsList.length} factual claims.` });
+
+  const claimsSummary = claimsList.map(c => ({ claimText: c.claimText, sourceEvidenceCount: (c.evidenceIds || []).length }));
+
+  broadcastNodeEvent({
+    node: 'Claim Extraction', status: 'COMPLETED',
+    claimsExtracted: claimsList.length,
+    claims: claimsSummary.length > 0 ? claimsSummary : [{ note: 'No verifiable claims could be extracted from the available evidence.' }]
+  });
   return { claims: claimsList };
 }
 
 async function citationVerificationNode(state) {
-  broadcastNodeEvent({ node: 'Citation Verification', status: 'RUNNING', message: 'Verifying citation URL reachability and text alignment...' });
+  broadcastNodeEvent({ node: 'Citation Verification', status: 'RUNNING' });
   const verifiedCitations = [];
   const systemInstruction = `You are a citation verification specialist. Compare each claim against its referenced evidence snippet(s). Evaluate semantically whether the evidence actually supports, partially supports, or does not support the claim. Read the actual content — do not use URL patterns, source existence, or keyword overlap alone.
 
-Return ONLY a raw JSON object with the following schema:
+Return ONLY a raw JSON object:
 {
   "supportStatus": "SUPPORTED" | "PARTIALLY_SUPPORTED" | "UNSUPPORTED",
   "supportConfidence": 85.5,
@@ -227,9 +346,9 @@ supportConfidence must be between 10.0 and 99.0. No extra text.`;
       const parsed = JSON.parse(cleanResponse);
       supportStatus = parsed.supportStatus || 'UNSUPPORTED';
       supportConfidence = parsed.supportConfidence || 10.0;
-      explanation = parsed.explanation || explanation;
-      quotedEvidence = parsed.quotedEvidence || '';
-      reasoning = parsed.reasoning || '';
+      explanation = typeof parsed.explanation === 'string' ? parsed.explanation : JSON.stringify(parsed.explanation || explanation);
+      quotedEvidence = typeof parsed.quotedEvidence === 'string' ? parsed.quotedEvidence : JSON.stringify(parsed.quotedEvidence || '');
+      reasoning = typeof parsed.reasoning === 'string' ? parsed.reasoning : JSON.stringify(parsed.reasoning || '');
     } catch (err) {
       logger.warn(`[Citation Verification] LLM parse failed for claim ${claim.id}: ${err.message}`);
       const overlapScore = matchedEvidence.reduce((acc, ev) => {
@@ -238,8 +357,8 @@ supportConfidence must be between 10.0 and 99.0. No extra text.`;
         const common = [...claimWords].filter(w => evWords.has(w));
         return acc + (claimWords.size > 0 ? common.length / claimWords.size : 0);
       }, 0) / matchedEvidence.length;
-      if (overlapScore > 0.3) { supportStatus = 'PARTIALLY_SUPPORTED'; supportConfidence = 30 + overlapScore * 50; explanation = `Partial term overlap (${(overlapScore * 100).toFixed(0)}% match) — LLM unavailable, fallback used.`; quotedEvidence = matchedEvidence[0]?.snippet?.substring(0, 100) || ''; reasoning = `Fallback evaluation: ${(overlapScore * 100).toFixed(0)}% term overlap between claim and evidence.`; }
-      else { supportStatus = 'UNSUPPORTED'; supportConfidence = 10 + overlapScore * 20; explanation = `Low term overlap (${(overlapScore * 100).toFixed(0)}%) — LLM unavailable, fallback used.`; quotedEvidence = ''; reasoning = `Fallback evaluation: Only ${(overlapScore * 100).toFixed(0)}% of claim terms appear in evidence.`; }
+      if (overlapScore > 0.3) { supportStatus = 'PARTIALLY_SUPPORTED'; supportConfidence = 30 + overlapScore * 50; explanation = `Partial term overlap (${(overlapScore * 100).toFixed(0)}% match) — LLM unavailable, fallback used. This is a less reliable verification.`; quotedEvidence = matchedEvidence[0]?.snippet?.substring(0, 100) || ''; reasoning = `Fallback evaluation: ${(overlapScore * 100).toFixed(0)}% term overlap between claim and evidence. This method is less reliable than semantic verification.`; }
+      else { supportStatus = 'UNSUPPORTED'; supportConfidence = 10 + overlapScore * 20; explanation = `Low term overlap (${(overlapScore * 100).toFixed(0)}%) — LLM unavailable, fallback used. This verification has low reliability.`; quotedEvidence = ''; reasoning = `Fallback evaluation: Only ${(overlapScore * 100).toFixed(0)}% of claim terms appear in evidence. This method is less reliable than semantic verification.`; }
     }
     for (const ev of matchedEvidence) {
       verifiedCitations.push(await db.citation.create({
@@ -250,15 +369,25 @@ supportConfidence must be between 10.0 and 99.0. No extra text.`;
       }));
     }
   }
-  broadcastNodeEvent({ node: 'Citation Verification', status: 'COMPLETED', message: `Verified ${verifiedCitations.length} primary citations.` });
+
+  const supported = verifiedCitations.filter(c => c.supportStatus === 'SUPPORTED').length;
+  const partial = verifiedCitations.filter(c => c.supportStatus === 'PARTIALLY_SUPPORTED').length;
+  const unsupported = verifiedCitations.filter(c => c.supportStatus === 'UNSUPPORTED').length;
+  const llmBased = verifiedCitations.filter(c => !c.explanation?.includes('fallback')).length;
+  const fallbackBased = verifiedCitations.filter(c => c.explanation?.includes('fallback')).length;
+
+  broadcastNodeEvent({
+    node: 'Citation Verification', status: 'COMPLETED',
+    citationsSummary: { total: verifiedCitations.length, supported, partiallySupported: partial, unsupported, llmBased, fallbackBased }
+  });
   return { citations: verifiedCitations };
 }
 
 async function factVerificationNode(state) {
-  broadcastNodeEvent({ node: 'Fact Verification', status: 'RUNNING', message: 'Cross-verifying claims against evidence snippets...' });
+  broadcastNodeEvent({ node: 'Fact Verification', status: 'RUNNING' });
   const systemInstruction = `You are a fact verification specialist. Verify each claim against its referenced evidence using semantic analysis of evidence content and source provenance. Consider: evidence quality, source credibility, semantic support, agreement across sources. Do NOT use keyword matching. Assign a unique confidenceScore for each claim based on this specific evidence.
 
-Return ONLY a raw JSON object with the following schema:
+Return ONLY a raw JSON object:
 {
   "status": "VERIFIED" | "PARTIALLY_VERIFIED" | "CONTRADICTED" | "UNSUPPORTED" | "INSUFFICIENT_EVIDENCE",
   "confidenceScore": 85.5,
@@ -288,7 +417,7 @@ No extra text. confidenceScore must vary per claim (10.0-99.0).`;
       const parsed = JSON.parse(cleanResponse);
       claim.status = parsed.status || 'INSUFFICIENT_EVIDENCE';
       claim.confidenceScore = parsed.confidenceScore || 30.0;
-      claim.explanation = parsed.explanation || 'Verification could not be completed from available evidence.';
+      claim.explanation = typeof parsed.explanation === 'string' ? parsed.explanation : JSON.stringify(parsed.explanation || 'Verification could not be completed from available evidence.');
       await db.claim.update(claim.id, { status: claim.status, confidenceScore: claim.confidenceScore, explanation: claim.explanation });
     } catch (err) {
       logger.warn(`[Fact Verification] LLM parse failed for claim ${claim.id}: ${err.message}`);
@@ -309,12 +438,21 @@ No extra text. confidenceScore must vary per claim (10.0-99.0).`;
     }
     updatedClaims[idx] = claim;
   }
-  broadcastNodeEvent({ node: 'Fact Verification', status: 'COMPLETED', message: 'Fact verification complete.' });
+
+  const verified = updatedClaims.filter(c => c.status === 'VERIFIED').length;
+  const partial = updatedClaims.filter(c => c.status === 'PARTIALLY_VERIFIED').length;
+  const contradicted = updatedClaims.filter(c => c.status === 'CONTRADICTED').length;
+  const unsupported = updatedClaims.filter(c => c.status === 'UNSUPPORTED' || c.status === 'INSUFFICIENT_EVIDENCE').length;
+
+  broadcastNodeEvent({
+    node: 'Fact Verification', status: 'COMPLETED',
+    factCheckSummary: { total: updatedClaims.length, verified, partiallyVerified: partial, contradicted, unsupported }
+  });
   return { claims: updatedClaims };
 }
 
 async function contradictionDetectionNode(state) {
-  broadcastNodeEvent({ node: 'Contradiction Detection', status: 'RUNNING', message: 'Auditing evidence for conflicting metrics or dates...' });
+  broadcastNodeEvent({ node: 'Contradiction Detection', status: 'RUNNING' });
   const contradictions = [];
   if (state.evidence.length >= 2) {
     const groupedByPublisher = {};
@@ -361,13 +499,14 @@ If no contradiction, return { "isContradiction": false, "reason": "...", "differ
           if (!alreadyExists) {
             const evA = state.evidence.find(e => e.id === parsed.evidenceIds[0]);
             const evB = state.evidence.find(e => e.id === parsed.evidenceIds[1]);
+            const diffType = typeof parsed.differenceType === 'string' ? parsed.differenceType : 'genuine contradiction';
             contradictions.push(await db.contradiction.create({
               jobId: state.jobId, claimText: `Contradiction between ${evA?.publisher || 'source A'} and ${evB?.publisher || 'source B'}`,
               sourceA: `${evA?.publisher || 'Source A'}: "${evA?.snippet?.substring(0, 150) || ''}"`,
               sourceB: `${evB?.publisher || 'Source B'}: "${evB?.snippet?.substring(0, 150) || ''}"`,
-              isContradiction: true, differenceType: parsed.differenceType || 'genuine contradiction',
-              contradictionConfidence: parsed.confidence || 50.0, explanation: parsed.reason || 'Sources present conflicting information.',
-              likelyReason: `Difference type: ${parsed.differenceType || 'unknown'}`, evidenceIds: parsed.evidenceIds
+              isContradiction: true, differenceType: diffType,
+              contradictionConfidence: parsed.confidence || 50.0, explanation: typeof parsed.reason === 'string' ? parsed.reason : JSON.stringify(parsed.reason || 'Sources present conflicting information.'),
+              likelyReason: `Difference type: ${diffType}`, evidenceIds: parsed.evidenceIds
             }));
           }
         }
@@ -375,16 +514,16 @@ If no contradiction, return { "isContradiction": false, "reason": "...", "differ
     }
 
     if (contradictions.length === 0) {
-      const numbersRegex = /\d+[\.\d]*(?:\s*(?:GW|MW|%|billion|million|trillion|₹|\$|€|£|kWh|TWh|sq\s*km|km|m|tons|tonnes))?/gi;
+      const genericNumberRegex = /\d+[\.\d]*/g;
       for (let i = 0; i < state.evidence.length; i++) {
         for (let j = i + 1; j < state.evidence.length; j++) {
           const a = state.evidence[i], b = state.evidence[j];
           if (a.publisher === b.publisher) continue;
-          const numsA = (a.snippet.match(numbersRegex) || []).map(n => parseFloat(n.replace(/[^\d.]/g, ''))).filter(n => !isNaN(n));
-          const numsB = (b.snippet.match(numbersRegex) || []).map(n => parseFloat(n.replace(/[^\d.]/g, ''))).filter(n => !isNaN(n));
+          const numsA = (a.snippet.match(genericNumberRegex) || []).map(n => parseFloat(n)).filter(n => !isNaN(n) && n > 0);
+          const numsB = (b.snippet.match(genericNumberRegex) || []).map(n => parseFloat(n)).filter(n => !isNaN(n) && n > 0);
           for (const na of numsA) {
             for (const nb of numsB) {
-              if (Math.abs(na - nb) > 0 && Math.min(na, nb) > 0) {
+              if (Math.min(na, nb) > 0) {
                 const ratio = Math.max(na, nb) / Math.min(na, nb);
                 if (ratio > 1.5 && ratio < 100) {
                   if (!contradictions.some(c => (c.evidenceIds || []).includes(a.id) || (c.evidenceIds || []).includes(b.id))) {
@@ -393,7 +532,7 @@ If no contradiction, return { "isContradiction": false, "reason": "...", "differ
                       sourceA: `${a.publisher}: "${a.snippet.substring(0, 120)}"`, sourceB: `${b.publisher}: "${b.snippet.substring(0, 120)}"`,
                       isContradiction: true, differenceType: 'numeric disagreement',
                       contradictionConfidence: Math.min(90, 30 + (ratio - 1) * 20),
-                      explanation: `Value ${na} from ${a.publisher} differs from value ${nb} from ${b.publisher} by factor of ${ratio.toFixed(1)}x.`,
+                      explanation: `Value ${na} from ${a.publisher} differs from value ${nb} from ${b.publisher} by factor of ${ratio.toFixed(1)}x. This could indicate different measurement dates, methodologies, or data sources.`,
                       likelyReason: 'Different measurement dates or methodologies', evidenceIds: [a.id, b.id]
                     }));
                   }
@@ -406,12 +545,26 @@ If no contradiction, return { "isContradiction": false, "reason": "...", "differ
       }
     }
   }
-  broadcastNodeEvent({ node: 'Contradiction Detection', status: 'COMPLETED', message: `Identified ${contradictions.length} source contradiction(s).` });
+
+  const contradictionSummary = contradictions.map(c => ({
+    claimA: c.claimText,
+    sourceA: c.sourceA ? c.sourceA.substring(0, 100) : '',
+    sourceB: c.sourceB ? c.sourceB.substring(0, 100) : '',
+    differenceType: c.differenceType,
+    confidence: c.contradictionConfidence,
+    explanation: c.explanation ? c.explanation.substring(0, 150) : ''
+  }));
+
+  broadcastNodeEvent({
+    node: 'Contradiction Detection', status: 'COMPLETED',
+    contradictionsFound: contradictions.length,
+    contradictions: contradictionSummary.length > 0 ? contradictionSummary : [{ note: 'No contradictions detected among the sources reviewed.' }]
+  });
   return { contradictions };
 }
 
 async function hallucinationCheckNode(state) {
-  broadcastNodeEvent({ node: 'Hallucination Check', status: 'RUNNING', message: 'Evaluating statement support & ground-truth alignment...' });
+  broadcastNodeEvent({ node: 'Hallucination Check', status: 'RUNNING' });
   let hallucinationScore = 0.0;
   if (state.claims.length === 0 || state.evidence.length === 0) {
     hallucinationScore = state.evidence.length === 0 ? 100.0 : 0.0;
@@ -431,54 +584,77 @@ async function hallucinationCheckNode(state) {
     const score = (unsupportedCount / totalClaims) * 50 + (uncoveredClaims / totalClaims) * 25 + Math.max(0, (1 - citationSupportAvg / 100) * 15) + (contradictedClaims / totalClaims) * 10;
     hallucinationScore = Math.min(100, Math.max(0, +score.toFixed(1)));
   }
-  broadcastNodeEvent({ node: 'Hallucination Check', status: 'COMPLETED', message: `Hallucination score calculated: ${hallucinationScore}% (Lower is better).` });
+  broadcastNodeEvent({
+    node: 'Hallucination Check', status: 'COMPLETED',
+    hallucinationScore,
+    interpretation: hallucinationScore <= 20 ? 'Low hallucination risk' : hallucinationScore <= 50 ? 'Moderate hallucination risk' : 'High hallucination risk — verification recommended',
+    factors: {
+      unsupportedClaims: state.claims.filter(c => ['UNSUPPORTED', 'INSUFFICIENT_EVIDENCE'].includes(c.status)).length,
+      totalClaims: state.claims.length,
+      averageCitationConfidence: state.citations.length > 0 ? +(state.citations.reduce((a, c) => a + (c.supportConfidence || 0), 0) / state.citations.length).toFixed(1) : 0,
+      contradictedClaims: state.claims.filter(c => c.status === 'CONTRADICTED').length
+    }
+  });
   return { hallucinationScore };
 }
 
 async function consensusConfidenceNode(state) {
-  broadcastNodeEvent({ node: 'Consensus & Confidence', status: 'RUNNING', message: 'Calculating explainable confidence score...' });
+  broadcastNodeEvent({ node: 'Consensus & Confidence', status: 'RUNNING' });
   let overallConfidence = 50.0;
+  let breakdown = {};
   if (state.claims.length > 0 && state.evidence.length > 0) {
     const totalEv = state.evidence.length;
     const totalClaims = state.claims.length;
     const uniquePublishers = new Set(state.evidence.map(e => e.publisher)).size;
     const verifiedScores = state.claims.map(c => c.confidenceScore || 50.0);
     const avgClaimScore = verifiedScores.reduce((acc, v) => acc + v, 0) / totalClaims;
-    const claimScoreVariance = verifiedScores.length > 1 ? Math.sqrt(verifiedScores.reduce((a, v) => a + (v - avgClaimScore) ** 2, 0) / verifiedScores.length) / 10 : 0;
-    const evidenceDepthFactor = Math.min(1.0, totalEv / 10);
-    const avgAuthority = state.evidence.reduce((acc, e) => acc + (e.domainAuthorityScore || 0.55), 0) / totalEv;
     const supportedClaims = state.claims.filter(c => state.citations.some(cit => cit.claimId === c.id && cit.supportStatus === 'SUPPORTED')).length;
     const citationSupportRatio = supportedClaims / totalClaims;
     const fullyVerified = state.claims.filter(c => c.status === 'VERIFIED').length;
     const partiallyVerified = state.claims.filter(c => c.status === 'PARTIALLY_VERIFIED').length;
     const contradicted = state.claims.filter(c => c.status === 'CONTRADICTED').length;
     const unsupported = state.claims.filter(c => c.status === 'UNSUPPORTED' || c.status === 'INSUFFICIENT_EVIDENCE').length;
-    const verifiedRatio = (fullyVerified + partiallyVerified * 0.5) / totalClaims;
-    const contradictedRatio = contradicted / totalClaims;
-    const unsupportedRatio = unsupported / totalClaims;
-    const independentSourceBonus = Math.min(15, uniquePublishers * 3);
+    const avgAuthority = state.evidence.reduce((acc, e) => acc + (e.domainAuthorityScore || 0.55), 0) / totalEv;
     const evidenceCoverageRatio = state.claims.filter(c => (c.evidenceIds || []).length > 0).length / totalClaims;
-    const score = +(avgClaimScore * 0.25 + avgAuthority * 10 + evidenceDepthFactor * 8 + citationSupportRatio * 10 + verifiedRatio * 15 + independentSourceBonus + evidenceCoverageRatio * 7 + Math.min(8, claimScoreVariance) - (state.contradictions.length * 5.0 + contradictedRatio * 25) - Math.max(0, (4 - totalEv) * 4) - unsupportedRatio * 20).toFixed(1);
-    overallConfidence = Math.min(99.0, Math.max(5.0, score));
+
+    const evidenceQualityScore = Math.round(Math.min(100, avgAuthority * 100 + evidenceCoverageRatio * 10));
+    const sourceReliabilityScore = Math.round(Math.min(100, avgAuthority * 80 + Math.min(20, uniquePublishers * 4)));
+    const verificationScore = Math.round(Math.min(100, citationSupportRatio * 60 + (fullyVerified / totalClaims) * 40));
+    const freshnessScore = Math.round(Math.min(100, totalEv > 0 ? 70 + Math.min(30, totalEv * 3) : 0));
+    const agreementScore = Math.round(Math.min(100, 100 - (contradicted / totalClaims) * 50 - (unsupported / totalClaims) * 30));
+
+    breakdown = { evidenceQualityScore, sourceReliabilityScore, verificationScore, freshnessScore, agreementScore };
+    const componentValues = [evidenceQualityScore, sourceReliabilityScore, verificationScore, freshnessScore, agreementScore];
+    const weights = [0.25, 0.20, 0.25, 0.10, 0.20];
+    overallConfidence = +Math.min(99.0, Math.max(5.0, componentValues.reduce((a, v, i) => a + v * weights[i], 0))).toFixed(1);
+  } else {
+    breakdown = { evidenceQualityScore: 0, sourceReliabilityScore: 0, verificationScore: 0, freshnessScore: 0, agreementScore: 0 };
+    overallConfidence = 5.0;
   }
-  broadcastNodeEvent({ node: 'Consensus & Confidence', status: 'COMPLETED', message: `Calibrated Overall Confidence: ${overallConfidence}%` });
-  return { overallConfidence };
+  broadcastNodeEvent({
+    node: 'Consensus & Confidence', status: 'COMPLETED',
+    confidenceBreakdown: breakdown,
+    overallConfidence,
+    formula: 'Final = Evidence(25%) + SourceReliability(20%) + Verification(25%) + Freshness(10%) + Agreement(20%)',
+    interpretation: overallConfidence >= 80 ? 'High confidence — most claims verified across reliable sources' : overallConfidence >= 50 ? 'Moderate confidence — some claims verified, some sources reliable' : 'Low confidence — insufficient verification or conflicting evidence'
+  });
+  return { overallConfidence, confidenceBreakdown: breakdown };
 }
 
 async function reportGenerationNode(state) {
-  broadcastNodeEvent({ node: 'Report Generator', status: 'RUNNING', message: 'Synthesizing verified citation-backed research report...' });
+  broadcastNodeEvent({ node: 'Report Generator', status: 'RUNNING' });
   const systemInstruction = `You are a research synthesis agent. Generate a concise, objective, evidence-backed Executive Summary that directly answers the user's research question. Base your summary ONLY on the provided claims, contradictions, evidence, and confidence metrics. Do not invent any facts not in the context. Structure the summary to:
 1. Directly answer the research question
 2. Reference key verified findings
 3. Note any contradictions or caveats
 4. State the overall confidence level
-Format in clear paragraphs. No placeholder text or generic templates.`;
+Format in clear paragraphs. No placeholder text.`;
 
   const context = {
     query: state.query, overallConfidence: state.overallConfidence, hallucinationScore: state.hallucinationScore,
     evidence: state.evidence.map(e => ({ title: e.sourceTitle, snippet: e.snippet, publisher: e.publisher })),
     claims: state.claims.map(c => ({ text: c.claimText, status: c.status, confidenceScore: c.confidenceScore, explanation: c.explanation })),
-    contradictions: state.contradictions.map(c => ({ claimText: c.claimText, sourceA: c.sourceA, sourceB: c.sourceB, isContradiction: c.isContradiction, differenceType: c.differenceType, contradictionConfidence: c.contradictionConfidence, explanation: c.explanation, likelyReason: c.likelyReason }))
+    contradictions: state.contradictions.map(c => ({ claimText: c.claimText, sourceA: c.sourceA, sourceB: c.sourceB, isContradiction: c.isContradiction, differenceType: c.differenceType, contradictionConfidence: c.contradictionConfidence, explanation: c.explanation }))
   };
 
   let summaryText = '';
@@ -488,75 +664,164 @@ Format in clear paragraphs. No placeholder text or generic templates.`;
     if (!cached && summaryText) await setCachedLLM(JSON.stringify(context), systemInstruction, 'report', summaryText, 600);
   } catch (err) { logger.warn(`[Report Gen] LLM failed: ${err.message}`); }
 
-  const fallbackSummary = `Based on analysis of ${state.evidence.length} evidence sources regarding the research question "${state.query}", ${state.claims.length} key claims were extracted and verified. Of these, ${state.claims.filter(c => c.status === 'VERIFIED').length} were fully verified, ${state.claims.filter(c => c.status === 'PARTIALLY_VERIFIED' || c.status === 'SUPPORTED').length} were partially verified, and ${state.claims.filter(c => c.status === 'CONTRADICTED' || c.status === 'UNSUPPORTED').length} could not be confirmed. ${state.contradictions.length > 0 ? state.contradictions.length + ' contradiction(s) were identified between sources.' : 'No major contradictions were detected among the sources reviewed.'} Overall research confidence is estimated at ${state.overallConfidence}% with a hallucination index of ${state.hallucinationScore}%.`;
+  const verifiedCount = state.claims.filter(c => c.status === 'VERIFIED').length;
+  const partialCount = state.claims.filter(c => c.status === 'PARTIALLY_VERIFIED' || c.status === 'SUPPORTED').length;
+  const failedCount = state.claims.filter(c => c.status === 'CONTRADICTED' || c.status === 'UNSUPPORTED' || c.status === 'INSUFFICIENT_EVIDENCE').length;
+
+  const fallbackSummary = `Based on analysis of ${state.evidence.length} evidence sources regarding the research question "${state.query}", ${state.claims.length} key claims were extracted and verified. Of these, ${verifiedCount} were fully verified, ${partialCount} were partially verified, and ${failedCount} could not be confirmed. ${state.contradictions.length > 0 ? state.contradictions.length + ' contradiction(s) were identified between sources.' : 'No major contradictions were detected among the sources reviewed.'} Overall research confidence is estimated at ${state.overallConfidence}% with a hallucination index of ${state.hallucinationScore}%.`;
+
+  const cb = state.confidenceBreakdown || {};
+  const sourceRankingRows = state.evidence
+    .map(e => ({
+      title: e.sourceTitle,
+      publisher: e.publisher,
+      url: e.sourceUrl,
+      authority: Math.round((e.domainAuthorityScore || 0.55) * 100),
+      recency: e.createdAt ? 70 : 50,
+      crossRefCount: state.citations.filter(c => c.evidenceId === e.id || c.url === e.sourceUrl).length
+    }))
+    .sort((a, b) => b.authority - a.authority)
+    .slice(0, 15);
+
+  const sourceRankingTable = sourceRankingRows.map((s, i) =>
+    `| ${i + 1} | [${s.title}](${s.url}) | ${s.publisher} | ${s.authority}/100 | ${s.crossRefCount} |`
+  ).join('\n');
+
+  const claimsTable = state.claims.map((c, i) => {
+    const cit = state.citations.find(cit => cit.claimId === c.id);
+    return `| ${i + 1} | ${c.claimText} | ${c.status} | ${c.confidenceScore || 0}% | ${cit ? `[${cit.title || 'Source'}](${cit.url || '#'})` : 'No citation'} |`;
+  }).join('\n');
+
+  const contradictionsSection = state.contradictions.length === 0
+    ? '*No contradictions were detected among the sources reviewed.*'
+    : state.contradictions.map((con, i) =>
+        `### Contradiction ${i + 1}: ${con.claimText}\n- **Source A:** ${con.sourceA}\n- **Source B:** ${con.sourceB}\n- **Type:** ${con.differenceType || 'genuine contradiction'} (Confidence: ${con.contradictionConfidence || 50}%)\n- **Analysis:** ${con.explanation}`
+      ).join('\n\n');
+
+  const evidenceTimeline = state.evidence.slice(0, 10).map((e, i) =>
+    `| ${i + 1} | [${e.sourceTitle}](${e.sourceUrl}) | ${e.publisher} | ${(e.domainAuthorityScore * 100).toFixed(0)}% |`
+  ).join('\n');
+
+  const auditEntries = [
+    `**Research Query:** "${state.query}"`,
+    `**Research Plan:**`,
+    ...(state.researchPlan?.objectives || []).map(o => `  - ${o}`),
+    `**Search Queries Executed:**`,
+    ...(state.tasks || []).map(t => `  - "${t.objective}"`),
+    `**Sources Discovered:** ${state.evidence.length}`,
+    `**Claims Extracted:** ${state.claims.length}`,
+    `**Citations Created:** ${state.citations.length} (${state.citations.filter(c => c.supportStatus === 'SUPPORTED').length} supported, ${state.citations.filter(c => c.supportStatus === 'PARTIALLY_SUPPORTED').length} partial, ${state.citations.filter(c => c.supportStatus === 'UNSUPPORTED').length} unsupported)`,
+    `**Contradictions Found:** ${state.contradictions.length}`,
+    `**Confidence Calculation:**`,
+    `  - Evidence Quality: ${cb.evidenceQualityScore || 0}/100`,
+    `  - Source Reliability: ${cb.sourceReliabilityScore || 0}/100`,
+    `  - Verification Score: ${cb.verificationScore || 0}/100`,
+    `  - Freshness: ${cb.freshnessScore || 0}/100`,
+    `  - Agreement: ${cb.agreementScore || 0}/100`,
+    `  - **Final Confidence: ${state.overallConfidence || 0}%**`,
+    `**Hallucination Score:** ${state.hallucinationScore || 0}%`,
+    `**Generated:** ${new Date().toISOString()}`
+  ];
 
   const markdown = `# InnoGen Verified Research Report
-**Query**: "${state.query}"
-**Confidence Score**: ${state.overallConfidence}% | **Hallucination Index**: ${state.hallucinationScore}% | **Date**: ${new Date().toLocaleString()}
+
+**Query:** "${state.query}"
+**Final Confidence:** ${state.overallConfidence || 0}% | **Hallucination Index:** ${state.hallucinationScore || 0}%
+**Date:** ${new Date().toLocaleString()}
 
 ---
 
 ## 1. Executive Summary
+
 ${summaryText || fallbackSummary}
 
 ---
 
-## 2. Key Verified Claims
+## 2. Key Findings
 
-${state.claims.map((c, i) => {
-  const citation = state.citations.find(cit => cit.claimId === c.id) || {};
-  return `
-### Claim ${i + 1}: ${c.claimText}
-- **Verification Status**: \`${c.status}\` (${c.confidenceScore}% confidence)
-- **Explanation**: ${c.explanation}
-- **Primary Source**: [${citation.title || 'Source Citation'}](${citation.url || '#'}) (${citation.publisher || 'Publisher'})
-`;
-}).join('\n')}
+### Verified Claims
+${state.claims.filter(c => c.status === 'VERIFIED').map(c => `- ✅ **${c.claimText}** (${c.confidenceScore}% confidence)`).join('\n') || '*No claims fully verified.*'}
 
----
+### Partially Verified Claims
+${state.claims.filter(c => c.status === 'PARTIALLY_VERIFIED' || c.status === 'SUPPORTED').map(c => `- ⚠️ **${c.claimText}** (${c.confidenceScore}% confidence)`).join('\n') || '*No partially verified claims.*'}
 
-## 3. Detected Contradictions & Discrepancies
-${state.contradictions.length === 0 ? '*No major source contradictions detected.*' : state.contradictions.map((con, i) => `
-> ⚠️ **Contradiction #${i + 1}: ${con.claimText}**
-> - **Source A**: ${con.sourceA}
-> - **Source B**: ${con.sourceB}
-> - **Type**: ${con.differenceType || 'genuine contradiction'} (Confidence: ${con.contradictionConfidence || 50}%)
-> - **Analytical Explanation**: ${con.explanation}
-> - **Likely Reason**: ${con.likelyReason || 'Not specified'}
-`).join('\n')}
+### Unverified / Unsupported Claims
+${state.claims.filter(c => c.status === 'UNSUPPORTED' || c.status === 'INSUFFICIENT_EVIDENCE').map(c => `- ❌ **${c.claimText}** (${c.confidenceScore}% confidence) — ${c.explanation || 'Insufficient evidence'}`).join('\n') || '*All claims have some degree of verification.*'}
+
+### Contradicted Claims
+${state.claims.filter(c => c.status === 'CONTRADICTED').map(c => `- 🔄 **${c.claimText}** — ${c.explanation || 'Contradicting evidence found'}`).join('\n') || '*No contradicted claims.*'}
 
 ---
 
-## 4. Evidence Matrix & Provenance Log
-<table class="doc-table">
-  <thead>
-    <tr>
-      <th>Source Title</th>
-      <th>Publisher</th>
-      <th>Authority Score</th>
-      <th>Snippet Summary</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${state.evidence.map(e => `
-      <tr>
-        <td><a href="${e.sourceUrl}" target="_blank" rel="noopener">${e.sourceTitle}</a></td>
-        <td>${e.publisher}</td>
-        <td>${(e.domainAuthorityScore * 100).toFixed(0)}%</td>
-        <td>${e.snippet.substring(0, 90)}...</td>
-      </tr>
-    `).join('')}
-  </tbody>
-</table>
+## 3. Verified Claims Detail
+
+| # | Claim | Status | Confidence | Source |
+|---|-------|--------|------------|--------|
+${claimsTable || '| - | No claims extracted | - | - | - |'}
 
 ---
 
-## 5. Methodology & Audit Trail
-This report was generated by the **InnoGen 10-Agent Research Pipeline**. Every claim maps to a primary source URL.
-`;
+## 4. Detected Contradictions
 
-  await db.report.create({ jobId: state.jobId, summaryMarkdown: markdown, confidenceScore: state.overallConfidence, auditTrail: { objectives: state.objectives, taskCount: state.tasks.length, evidenceCount: state.evidence.length, claimCount: state.claims.length, contradictionCount: state.contradictions.length } });
-  broadcastNodeEvent({ node: 'Report Generator', status: 'COMPLETED', message: 'Report synthesis complete!' });
+${contradictionsSection}
+
+---
+
+## 5. Evidence Timeline
+
+| # | Source | Publisher | Authority |
+|---|--------|-----------|-----------|
+${evidenceTimeline || '| - | No evidence collected | - | - |'}
+
+---
+
+## 6. Confidence Analysis
+
+| Component | Score | Weight | Contribution |
+|-----------|-------|--------|-------------|
+| Evidence Quality | ${cb.evidenceQualityScore || 0}/100 | 25% | ${((cb.evidenceQualityScore || 0) * 0.25).toFixed(1)} |
+| Source Reliability | ${cb.sourceReliabilityScore || 0}/100 | 20% | ${((cb.sourceReliabilityScore || 0) * 0.20).toFixed(1)} |
+| Cross Verification | ${cb.verificationScore || 0}/100 | 25% | ${((cb.verificationScore || 0) * 0.25).toFixed(1)} |
+| Freshness | ${cb.freshnessScore || 0}/100 | 10% | ${((cb.freshnessScore || 0) * 0.10).toFixed(1)} |
+| Agreement | ${cb.agreementScore || 0}/100 | 20% | ${((cb.agreementScore || 0) * 0.20).toFixed(1)} |
+| **Final Confidence** | **${state.overallConfidence || 0}%** | **100%** | **${state.overallConfidence || 0}** |
+
+${state.overallConfidence < 50 ? '> ⚠️ **Low confidence warning:** The confidence score is below 50%. This means insufficient evidence was available to reliably verify the research findings. Treat the output with caution.' : ''}
+
+${state.hallucinationScore > 50 ? '> ⚠️ **High hallucination risk:** A significant portion of the output could not be grounded in retrieved evidence. Independent verification is strongly recommended.' : ''}
+
+---
+
+## 7. Source Ranking
+
+| Rank | Source | Publisher | Authority | Cross-References |
+|------|--------|-----------|-----------|-----------------|
+${sourceRankingTable || '| - | No sources available | - | - | - |'}
+
+---
+
+## 8. Complete Source References
+
+${state.evidence.map((e, i) => `${i + 1}. **[${e.sourceTitle}](${e.sourceUrl})** — ${e.publisher}${e.createdAt ? ` (Retrieved: ${new Date(e.createdAt).toLocaleDateString()})` : ''}`).join('\n') || '*No sources were retrieved. This may indicate search service unavailability.*'}
+
+---
+
+## 9. Audit Trail
+
+${auditEntries.join('\n')}
+
+---
+
+*Report generated by **InnoGen Autonomous Multi-Agent Research Engine** | Job ID: ${state.jobId} | Timestamp: ${new Date().toISOString()}*
+*Confidence: ${state.overallConfidence || 0}% | Hallucination: ${state.hallucinationScore || 0}%*
+*This report is automatically generated. Every claim should be independently verified against the cited sources.*`;
+
+  await db.report.create({ jobId: state.jobId, summaryMarkdown: markdown, confidenceScore: state.overallConfidence, auditTrail: { objectives: state.researchPlan?.objectives || [], claimCount: state.claims.length, contradictionCount: state.contradictions.length, confidenceBreakdown: state.confidenceBreakdown } });
+  broadcastNodeEvent({
+    node: 'Report Generator', status: 'COMPLETED',
+    reportLength: markdown.length,
+    sections: ['Executive Summary', 'Key Findings', 'Verified Claims', 'Contradictions', 'Evidence Timeline', 'Confidence Analysis', 'Source Ranking', 'References', 'Audit Trail']
+  });
   return { reportMarkdown: markdown };
 }
 
@@ -600,9 +865,10 @@ export async function executeResearchGraph(jobId) {
 
   const initialState = {
     jobId, query: job.query, depth: job.depth || 'standard', academicOnly: !!job.academicOnly,
-    objectives: [], tasks: [], evidence: [], rawSearchResults: [],
+    researchPlan: null,
+    tasks: [], evidence: [], rawSearchResults: [],
     claims: [], citations: [], contradictions: [],
-    overallConfidence: 0.0, hallucinationScore: 0.0, reportMarkdown: ''
+    overallConfidence: 0.0, confidenceBreakdown: null, hallucinationScore: 0.0, sourceRankings: [], reportMarkdown: ''
   };
 
   try {

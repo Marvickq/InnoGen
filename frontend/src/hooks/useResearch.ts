@@ -56,6 +56,11 @@ export interface ResearchJob {
   report?: {
     summaryMarkdown?: string;
   };
+  _count?: {
+    evidenceItems: number;
+    claims: number;
+    contradictions: number;
+  };
 }
 
 export interface ResearchState {

@@ -68,7 +68,12 @@ export const db = {
         createdAt: job.createdAt.toISOString(),
         completedAt: job.completedAt?.toISOString?.() || null,
         tasks: job.tasks.map(t => ({ ...t, createdAt: t.createdAt.toISOString() })),
-        evidenceItems: job.evidenceItems.map(e => ({ ...e, createdAt: e.createdAt.toISOString() })),
+        evidenceItems: job.evidenceItems.map(e => ({
+          ...e,
+          createdAt: e.createdAt.toISOString(),
+          authorityScore: e.domainAuthorityScore ? +(e.domainAuthorityScore * 100).toFixed(0) : 0,
+          domainAuthorityScore: undefined
+        })),
         claims: job.claims.map(c => ({
           ...c,
           createdAt: c.createdAt.toISOString(),
@@ -77,15 +82,45 @@ export const db = {
         contradictions: job.contradictions.map(c => ({
           ...c,
           createdAt: c.createdAt.toISOString(),
-          evidenceIds: deserializeArray(c.evidenceIds)
+          evidenceIds: deserializeArray(c.evidenceIds),
+          textA: c.sourceA,
+          textB: c.sourceB,
+          publisherA: c.sourceA ? c.sourceA.split(':')[0] : '',
+          publisherB: c.sourceB ? c.sourceB.split(':')[0] : ''
         })),
-        citations: job.citations.map(c => ({ ...c, createdAt: c.createdAt.toISOString() })),
+        citations: job.citations.map(c => ({
+          ...c,
+          createdAt: c.createdAt.toISOString(),
+          sourceTitle: c.title
+        })),
         report: job.report ? {
           ...job.report,
           createdAt: job.report.createdAt.toISOString()
         } : null
       };
       return serialized;
+    },
+    async findByStatus(status) {
+      const jobs = await prisma.researchJob.findMany({
+        where: { status },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          _count: { select: { evidenceItems: true, claims: true, contradictions: true } }
+        }
+      });
+      return jobs.map(j => ({
+        id: j.id,
+        userId: j.userId,
+        query: j.query,
+        depth: j.depth,
+        academicOnly: j.academicOnly,
+        status: j.status,
+        overallConfidence: j.overallConfidence,
+        hallucinationScore: j.hallucinationScore,
+        createdAt: j.createdAt.toISOString(),
+        completedAt: j.completedAt?.toISOString?.() || null,
+        _count: j._count
+      }));
     },
     async findMany() {
       const jobs = await prisma.researchJob.findMany({
